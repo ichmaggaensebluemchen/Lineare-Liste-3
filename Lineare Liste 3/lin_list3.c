@@ -3,7 +3,7 @@
 
 #pragma warning(disable : 4996)
 
-#define MAXLINE 256;
+#define MAXLINE 256
 
 //Struktur für eine Liste
 typedef struct lin_list
@@ -24,20 +24,26 @@ p_LinList LinListExtractFirst(p_LinList *anchor);
 void LinListRevert(p_LinList *anchor);
 void LinListPrint(FILE* out, p_LinList list);
 
-p_LinList LinListFindLast(p_LinList *anchor);
 p_LinList LinListInsertLast(p_LinList *anchor, p_LinList newcell);
 p_LinList LinListExtractLast(p_LinList *anchor);
 
-p_LinList LinListFind(p_LinList anchor, char* payload);
+p_LinList LinListFind(p_LinList *anchor, char* payload);
 p_LinList LinListExtract(p_LinList *anchor, p_LinList cell);
 
+p_LinList LinListSort(p_LinList *anchor);
+
 //Hauptprogramm
+//Verwenden Sie diese, um ein Programm zu schreiben, dass
+//beliebig viele Strings(bis 255 Zeichen Lange) einliest
+//alle Duplikate verwirft oder loscht(d.h.nur die erste Kopie behalt)
+//die Liste danach in Originalreihenfolge wieder ausgibt
 int main(int argc, char *argv[])
 {
 	FILE *in = stdin;					//File auf Tastatureingabe setzen
 	char line[MAXLINE];					//Char-Array für die Speicherung der Benutzereingaben
 	p_LinList list = NULL;				//Liste erzeugen
 	p_LinList temp;						//zweite Liste erzeugen, die nur als Zwischenspeicher genutzt wird
+	p_LinList sortedList;
 	char* input;						//Pointer für das Auslesen der Zeilen der Datei oder der Tastatureingabe
 
 	if (argc == 2)
@@ -50,9 +56,17 @@ int main(int argc, char *argv[])
 	}
 	while ((input = fgets(line, MAXLINE, in)))
 	{
-		temp = LinListAllocCell(line);				//Speicher für Eingabe reservieren und Wert in Variable eintragen
-		LinListInsertFirst(&list, temp);			//aktuelles Element als erstes der Liste einfügen
+		if (!LinListFind(&list, line) || (list == NULL))
+		{
+			temp = LinListAllocCell(line);					//Speicher für Eingabe reservieren und Wert in Variable eintragen
+			LinListInsertLast(&list, temp);					//aktuelles Element als letztes der Liste einfügen
+		}
 	}
+	sortedList = LinListSort(&list);
+	printf("-------------------------------------------\n");
+	printf("Sorted List\n");
+	printf("-------------------------------------------\n");
+	LinListPrint(stdout, sortedList);
 	system("Pause");
 	exit(EXIT_SUCCESS);
 }
@@ -91,12 +105,11 @@ void LinListFree(p_LinList *junk)
 //Erweitert die Liste, die bei *anchor steht um das neue Element newcell (vorne neues Element)
 p_LinList LinListInsertFirst(p_LinList *anchor, p_LinList newcell)
 {
-	newcell->next = *anchor;				//newcell->next zeigt auf den alten Wert von *anchor	
-	*anchor = newcell;						//*anchor zeigt danach auf newcell
+	newcell->next = anchor;				//newcell->next zeigt auf den alten Wert von *anchor	
+	anchor = newcell;						//*anchor zeigt danach auf newcell
 
 	return newcell;							//Rückgabewert ist Pointer auf die gesamte Liste
 }
-
 
 //Das erste Element  aus der Liste herausnehmen, die bei *anchor steht
 p_LinList LinListExtractFirst(p_LinList *anchor)
@@ -135,23 +148,28 @@ void LinListPrint(FILE* out, p_LinList list)
 	}
 }
 
-//finde letztes Elemnt der Liste
-p_LinList LinListFindLast(p_LinList *anchor)
-{
-
-}
-
-//Hange newcell als letztes Element an die Liste bei *anchor an
+//Hänge newcell als letztes Element an die Liste bei *anchor an
 //Ansonsten wie LinListInsertFirst()
 //Anmerkung : Das implementiert "nebenbei" append!
 p_LinList LinListInsertLast(p_LinList *anchor, p_LinList newcell)
 {
-	p_LinList cell = *anchor;				//aktuelle Zelle
-	while (cell)							//solange bis NULL-Pointer gefunden (letztes Element der Liste)
+	//Spezialfall in Liste ist leer
+	if (*anchor == NULL)
 	{
-		cell->next = cell;					//Zwischenspeicher des aktuellen Elements in Zelle
+		*anchor = newcell;
+		newcell->next = NULL;
+		return *anchor;
 	}
-	
+
+	//zuerst Suche des letzten Elements
+	p_LinList cell = *anchor;				//aktuelle Zelle zum Beginn der Suche
+
+	while (cell->next != NULL)				//solange cell Pointer ungleich NULL
+	{
+		cell = cell->next;					//springe zur nächsten Zelle
+	}
+
+	//neues Element an Ende der Liste anfügen
 	cell->next = newcell;					//bisher letztes Element erhält als nächstes Element das neue Element
 	newcell->next = NULL;					//letztes Element erhält kein nächstes Element (NULL-Pointer)
 
@@ -159,36 +177,105 @@ p_LinList LinListInsertLast(p_LinList *anchor, p_LinList newcell)
 }
 
 //Entferne das letzte Element der Liste, die bei *anchor steht
-//Voraussetzung : Die Liste ist nicht leer(sonst : Ruckgabewert NULL)
-//*anchor bleibt unverandert, es sei denn die Liste hat genau ein Element(dann wird *anchor auf NULL gesetzt)
-//Ruckgabewert ist Pointer auf das vormals letzte Element
+//*anchor bleibt unverändert, es sei denn die Liste hat genau ein Element(dann wird *anchor auf NULL gesetzt)
 p_LinList LinListExtractLast(p_LinList *anchor)
 {
-	p_LinList extract = *anchor;		//Kopie von erstem Element, das entfernt werden soll
+	p_LinList cell = *anchor;			//aktuelle Zelle wird Beginn der Liste
+	p_LinList extract = *anchor;		//Nachfolger der aktuellen Zelle und potenzielles letztes Elemnt, das entfernt werden soll
 
-	if (extract)						//Voraussetzung: Die Liste ist nicht leer(sonst: Rückgabewert NULL)
+	while (cell)						//solange Liste nicht leer
 	{
-		*anchor = extract->next;		//*anchor zeigt danach auf das vormals zweite Element der Liste
-		extract->next = NULL;			//das Element hat keinen Nachfolger mehr, da es entfernt werden soll
+		if (cell->next != NULL)			//Überprüfung, ob nächstes Element der Liste das letzte ist
+		{
+			extract = cell->next;
+
+			if (extract->next == NULL)
+			{									//dann ist cell die vorletzte Zelle und nextcell die letzte
+				cell->next = NULL;				//Vorletzte Zelle wird die letzte Zelle der Liste
+				return extract;					//Rückgabewert ist Pointer auf das vormals letzte Element (= zu löschende Element) es ist noch nicht gelöscht!
+			}
+		}
+		else                                    //anchor ist erstes und letztes Element
+		{
+			return anchor;
+		}
+		cell = cell->next;						//zur nächsten Zelle springen
 	}
-	return extract;						//Rückgabewert ist Pointer auf das vormals erste Element (Element wird nicht gelöscht!!)
 }
 
 //Finde eine Listenzelle anhand der payload
 //Gibt Pointer auf gefundenen Zelle oder NULL zurück
-p_LinList LinListFind(p_LinList anchor, char* payload)
+p_LinList LinListFind(p_LinList *anchor, char* payload)
 {
-
+	p_LinList list = *anchor;						//Start der Liste
+	while (list)									//solange es noch ein Element in der Liste gibt
+	{
+		if (strcmp(list->payload, payload) == NULL)	//falls das payload des aktuellen Listenelements gleich dem payload ist
+		{
+			return list;							//Rückgabe: aktuelles Element der Liste mit entsprechend gleichem payload
+		}
+		else
+		{
+			list = list->next;						//ansonsten springe zum nächsten Element der Liste
+		}
+	}
+	//wird nur erreicht, wenn beim letzten Element angekommen und payload nicht gefunden oder Lliste leer ist
+	return NULL;									//Rückgabe NULL-Pointer
 }
 
 //Entferne eine beliebige Zelle aus der Liste und gib sie zurück
 p_LinList LinListExtract(p_LinList *anchor, p_LinList cell)
 {
+	//suche des Vorgängers von cell
+	p_LinList temp = *anchor;
 
+	if (temp == cell)				//Überprüfung, ob cell das erste Element der Liste ist
+	{
+		return LinListExtractFirst(anchor);
+	}
+
+	if (cell->next == NULL)			//Überprüfung, ob cell das letzte Element der Liste ist
+	{
+		return LinListExtractLast(anchor);
+	}
+
+	while (temp)
+	{
+		if (temp->next == cell)			//Übeprüfen, ob temp der Vorgänger von cell ist
+		{
+			temp->next = cell->next;	//Vorgänger erhält als Nachfolger den Nachfolger von cell
+			cell->next = NULL;
+			return cell;
+		}
+		temp = temp->next;
+	}
 }
 
 //Sortiere die Liste(ASCIIbetisch, Hinweis: strcmp())
 p_LinList LinListSort(p_LinList *anchor)
 {
-
+	p_LinList list = *anchor;
+	p_LinList temp = *anchor;
+	p_LinList newList = NULL;
+	p_LinList newAnchor = NULL;
+	while (temp)													//solange noch Elemente unsortiert sind
+	{
+		while (list)											
+		{
+			if (strcmp(list->payload, temp->payload) < 0)			//list payload kleiner als temp payload
+			{
+				temp = list;										//kleinstes Element, sobald alle Listenelemente durchlaufen
+				list = list->next;									//Sprung zum nächsten Element
+			}
+			else
+			{
+				list = list->next;									//Sprung zum nächsten Element
+			}
+		}
+		temp = LinListExtract(anchor, temp);						//entfernen, des kleinesten Elements der Liste
+		newAnchor = LinListInsertLast(&newAnchor, temp);			//kleinstes Element in neue Liste am Anfang einfügen
+		list = *anchor;												//Liste auf Start setzen
+		temp = *anchor;												//temp auf Start setzen
+	}
+	return newAnchor;												//Rückgabe auf Start der neuen, sortierten Liste
 }
